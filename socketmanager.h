@@ -30,10 +30,16 @@ DEALINGS IN THE SOFTWARE.
 #include <QObject>
 #include <QTcpSocket>
 #include <memory>
-#include <vector>
 #include <QQueue>
 #include <QJsonObject>
 #include <optional>
+
+enum WindowType
+{
+    MAIN_WINDOW,
+    BASE_WINDOW,
+    INFOUSER_WINDOW
+};
 
 
 class SocketManager : public QObject
@@ -72,10 +78,7 @@ public:
     bool sendJSON(QJsonObject const&);
 
     // Pop a json from an specific queue
-    // 1 - main window
-    // 2 - base window
-    // 3 - info user window
-    std::optional<QJsonObject> popJSON(int64_t const);
+    std::optional<QJsonObject> popJSON(WindowType const);
 
     // async connect
     void tryConnect();

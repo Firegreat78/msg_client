@@ -55,6 +55,7 @@ private:
     void handleJSON(QJsonObject const&);
     void changeUsernameHandler(QJsonObject const&);
     void changePasswordHandler(QJsonObject const&);
+    void deleteAccountHandler(QJsonObject const&);
 
 private slots:
     void changeUsernameButtonClick();

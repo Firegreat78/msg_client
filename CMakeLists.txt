@@ -17,6 +17,7 @@ qt_add_executable(test1
     chatwidget.h chatwidget.cpp
     messagewidget.h messagewidget.cpp
     messageinfo.h messageinfo.cpp
+    JsonTypes.h
 )
 
 qt_add_translations(

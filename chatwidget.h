@@ -55,9 +55,6 @@ public:
 
     MessageInfo const& getMessageInfo(int64_t);
 
-    void updateText(int64_t const, QString const&);
-    void updateUsername(int64_t const, QString const&);
-    void updateTimestamp(int64_t const, QString const&);
     void updateInfo(int64_t const, MessageInfo const&);
 
     void scrollToBottom(int64_t const);
@@ -68,6 +65,7 @@ public:
     int64_t firstMessageID();
     int64_t lastMessageID();
     std::vector<int64_t> getCurrentMessagesID();
+    std::vector<int64_t> getVisibleMessagesID();
 
     // These two are for msg preloading
     // when a user scrolls up or down
@@ -106,10 +104,6 @@ private slots:
 
     void cancelHighlight();
 public slots:
-    void onApplyFilter(QString const&,
-                       QDateTime const&,
-                       QDateTime const&,
-                       bool);
 
 private:
     QVBoxLayout *m_layout;

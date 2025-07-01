@@ -27,6 +27,7 @@ DEALINGS IN THE SOFTWARE.
 #include "chatwidget.h"
 #include "windowmanager.h"
 #include "basewindow.h"
+#include "socketmanager.h"
 
 #include <QDateTime>
 #include <QLabel>
@@ -36,7 +37,6 @@ DEALINGS IN THE SOFTWARE.
 ChatWidget::ChatWidget(QWidget *parent)
     : QWidget{parent}
 {
-    // Создаем Scroll Area
     m_scrollArea = new QScrollArea(this);
     m_scrollArea->setWidgetResizable(true);
 
@@ -120,23 +120,6 @@ void ChatWidget::removeMessage(int64_t const id)
     messages.erase(id);
 }
 
-void ChatWidget::updateText(int64_t const id, QString const& text)
-{
-    if (messages.count(id) == 0) return;
-    messages[id]->updateText(text);
-}
-
-void ChatWidget::updateUsername(int64_t const id, QString const& username)
-{
-    if (messages.count(id) == 0) return;
-    messages[id]->updateUsername(username);
-}
-
-void ChatWidget::updateTimestamp(int64_t const id, QString const& tsStr)
-{
-    if (messages.count(id) == 0) return;
-    messages[id]->updateTimestamp(tsStr);
-}
 
 void ChatWidget::updateInfo(int64_t const id, MessageInfo const& info)
 {
@@ -265,6 +248,17 @@ std::vector<int64_t> ChatWidget::getCurrentMessagesID()
     return keys;
 }
 
+std::vector<int64_t> ChatWidget::getVisibleMessagesID()
+{
+    std::vector<int64_t> keys;
+    keys.reserve(messages.size());
+    for (const auto& [key, value] : messages) {
+        if (this->isMsgVisible(key))
+        keys.push_back(key);
+    }
+    return keys;
+}
+
 // SLOTS
 void ChatWidget::onSelectedMsgAnswer(int64_t id, QString, QString)
 {
@@ -327,14 +321,6 @@ void ChatWidget::onCancelEdit(int64_t id)
     if (shouldResetStyle)
         messages[id]->resetStyle();
     messages[id]->selectedEdit = false;
-}
-
-void ChatWidget::onApplyFilter(QString const& str,
-                               QDateTime const& begin,
-                               QDateTime const& end,
-                               bool isFilterDtEnabled)
-{
-
 }
 
 void ChatWidget::resetFilter()

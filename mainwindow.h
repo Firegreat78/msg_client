@@ -63,7 +63,6 @@ private slots:
     void onSocketError(QAbstractSocket::SocketError);
 
     void updateReconnectionLabel();
-    void sendHeartBeat();
 
     void onJsonArrived();
 

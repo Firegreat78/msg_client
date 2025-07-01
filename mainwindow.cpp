@@ -29,6 +29,7 @@ DEALINGS IN THE SOFTWARE.
 #include "logger.h"
 #include "socketmanager.h"
 #include "windowmanager.h"
+#include "JsonTypes.h"
 
 #include <QVBoxLayout>
 #include <QLineEdit>
@@ -56,7 +57,6 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     heartbeatTimer = new QTimer(this);
     connect(labelTickTimer, &QTimer::timeout, this, &MainWindow::updateReconnectionLabel);
     connect(reconnectTimer, &QTimer::timeout, this, &MainWindow::tryReconnect);
-    connect(heartbeatTimer, &QTimer::timeout, this, &MainWindow::sendHeartBeat);
     sm.tryConnect();
     ui->reTryToConnectButton->setEnabled(false);
     ui->registerButton->setEnabled(false);
@@ -68,7 +68,6 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     ui->usernameLineEdit->hide();
 
     connect(&sm, &SocketManager::arrivedJSMainWin, this, &MainWindow::onJsonArrived);
-    //this->setStyleSheet("background-color: rgb(255, 255, 255);");
 }
 
 void MainWindow::showEvent(QShowEvent *event)
@@ -113,7 +112,7 @@ void MainWindow::loginButtonClick()
     }
 
     QJsonObject json;
-    json["type"] = "userLogin";
+    json["type"] = USER_LOGIN;
     json["login"] = login;
     json["password_hash"] = wm.sha256FromQString(password);
     sm.sendJSON(json);
@@ -143,7 +142,7 @@ void MainWindow::registerButtonClick()
         return;
     }
     QJsonObject json;
-    json["type"] = "userRegister";
+    json["type"] = USER_REGISTER;
     json["login"] = login;
     json["username"] = username;
     json["password_hash"] = wm.sha256FromQString(password);
@@ -228,7 +227,7 @@ void MainWindow::onJsonArrived()
 {
     Logger& logger = Logger::getInstance();
     SocketManager& s_manager = SocketManager::getInstance();
-    std::optional<QJsonObject> js = s_manager.popJSON(1);
+    std::optional<QJsonObject> js = s_manager.popJSON(MAIN_WINDOW);
     if (!js.has_value()) return;
     handle_json(js.value());
 }
@@ -236,9 +235,9 @@ void MainWindow::onJsonArrived()
 void MainWindow::handle_json(QJsonObject const& js)
 {
     Logger& logger = Logger::getInstance();
-    QString type = js["type"].toString();
+    int const type = js["type"].toInt();
 
-    if (type == "error")
+    if (type == ERROR_TYPE)
     {
         std::string const msg = std::string("Server error occured: ") +
             js["info"].toString().toStdString();
@@ -246,8 +245,8 @@ void MainWindow::handle_json(QJsonObject const& js)
         return;
     }
     QJsonObject response = js["response"].toObject();
-    if (type == "userRegisterResponse") registerResponseHandler(response);
-    else if (type == "userLoginResponse") loginResponseHandler(response);
+    if (type == USER_REGISTER) registerResponseHandler(response);
+    else if (type == USER_LOGIN) loginResponseHandler(response);
 }
 
 void MainWindow::onSocketDisconnected()
@@ -286,14 +285,6 @@ void MainWindow::updateReconnectionLabel()
 
     QString txt = QString("Нет подключения к серверу... Повтор через %1 сек.").arg(secondsUntilReconnection);
     ui->serverConnectionLabel->setText(txt);
-}
-
-void MainWindow::sendHeartBeat()
-{
-    if (!SocketManager::isConnectedToServer()) return;
-    QJsonObject json;
-    json["type"] = "heartbeat";
-    SocketManager::getInstance().sendJSON(json);
 }
 
 void MainWindow::loginResponseHandler(QJsonObject const& response)

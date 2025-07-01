@@ -26,6 +26,7 @@ DEALINGS IN THE SOFTWARE.
 
 #include "socketmanager.h"
 #include "logger.h"
+#include "JsonTypes.h"
 #include <QJsonDocument>
 
 QString const IP_ADDRESS = "127.0.0.1";
@@ -53,7 +54,6 @@ SocketManager::SocketManager(QObject *parent)
     connect(socket.get(), &QTcpSocket::readyRead, this, &SocketManager::onSocketReadyRead);
 }
 
-// TODO: change type to QByteArray
 size_t getFirstCompletedIndex(std::string const& chunk)
 {
     int depth = 0;
@@ -123,15 +123,16 @@ void SocketManager::onSocketReadyRead()
 
 void SocketManager::enqueue(QJsonObject const& js)
 {
-    QString const type = js["type"].toString();
-    if (type == "userLoginResponse" ||
-        type == "userRegisterResponse")
+    int const type = js["type"].toInt();
+    if (type == USER_LOGIN ||
+        type == USER_REGISTER)
     {
         mainWinQ.enqueue(js);
         emit arrivedJSMainWin();
     }
-    else if (type == "changeUsernameResponse" ||
-             type == "changePasswordResponse")
+    else if (type == CHANGE_USERNAME ||
+             type == CHANGE_PASSWORD ||
+             type == DELETE_ACCOUNT)
     {
 
         infoUserWinQ.enqueue(js);
@@ -199,11 +200,11 @@ bool SocketManager::isConnectedToServer()
     return SocketManager::getInstance().isConnected;
 }
 
-std::optional<QJsonObject> SocketManager::popJSON(int64_t const q_index)
+std::optional<QJsonObject> SocketManager::popJSON(WindowType const winType)
 {
-    if (q_index == 1) return popJSMainWin();
-    if (q_index == 2) return popJSBaseWin();
-    if (q_index == 3) return popJSInfoUserWin();
+    if (winType == MAIN_WINDOW) return popJSMainWin();
+    if (winType == BASE_WINDOW) return popJSBaseWin();
+    if (winType == INFOUSER_WINDOW) return popJSInfoUserWin();
     return {};
 }
 

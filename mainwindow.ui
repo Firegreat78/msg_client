@@ -304,32 +304,6 @@
      <set>Qt::AlignmentFlag::AlignCenter</set>
     </property>
    </widget>
-   <widget class="QLabel" name="actionStatusLabel">
-    <property name="geometry">
-     <rect>
-      <x>500</x>
-      <y>170</y>
-      <width>401</width>
-      <height>41</height>
-     </rect>
-    </property>
-    <property name="font">
-     <font>
-      <family>Segoe Print</family>
-      <pointsize>14</pointsize>
-      <underline>false</underline>
-     </font>
-    </property>
-    <property name="autoFillBackground">
-     <bool>false</bool>
-    </property>
-    <property name="text">
-     <string>Режим входа в систему</string>
-    </property>
-    <property name="alignment">
-     <set>Qt::AlignmentFlag::AlignCenter</set>
-    </property>
-   </widget>
    <widget class="QPushButton" name="switchActionStatusButton">
     <property name="geometry">
      <rect>

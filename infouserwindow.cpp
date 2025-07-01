@@ -30,12 +30,12 @@ DEALINGS IN THE SOFTWARE.
 #include "windowmanager.h"
 #include "socketmanager.h"
 #include "logger.h"
+#include "JsonTypes.h"
 
 #include <QCloseEvent>
 #include <QShowEvent>
 #include <QJsonObject>
 #include <QMessageBox>
-#include <iostream>
 
 InfoUserWindow::InfoUserWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -89,17 +89,15 @@ void InfoUserWindow::changeUsernameButtonClick()
     WindowManager& wm = WindowManager::getInstance();
     if (!SocketManager::isConnectedToServer())
     {
-        QMessageBox::warning(this, "Action failed!", "Cannot change username: no server connection.");
         return;
     }
     QString newUsername = ui->newUsernameLineEdit->text();
     if (newUsername == ui->usernameInfoValueLabel->text())
     {
-        QMessageBox::information(this, "?", "Вы ввели ваше текущее имя пользователя.");
         return;
     }
     QJsonObject js;
-    js["type"] = "changeUsername";
+    js["type"] = CHANGE_USERNAME;
     js["id"] = wm.user_id;
     js["new_username"] = ui->newUsernameLineEdit->text();
     sm.sendJSON(js);
@@ -111,18 +109,16 @@ void InfoUserWindow::changePwordButtonClick()
     WindowManager& wm = WindowManager::getInstance();
     if (!SocketManager::isConnectedToServer())
     {
-        QMessageBox::warning(this, "Action failed!", "Cannot change password: no server connection.");
         return;
     }
     QString password1 = ui->newPwordLineEdit->text();
     QString password2 = ui->confirmNewPwordLineEdit->text();
     if (password1 != password2)
     {
-        QMessageBox::warning(this, "Ошибка", "Пароли не совпадают!");
         return;
     }
     QJsonObject js;
-    js["type"] = "changePassword";
+    js["type"] = CHANGE_PASSWORD;
     js["id"] = wm.user_id;
     js["new_password_hash"] = wm.sha256FromQString(password1);
     sm.sendJSON(js);
@@ -130,7 +126,15 @@ void InfoUserWindow::changePwordButtonClick()
 
 void InfoUserWindow::deleteAccountButtonClick()
 {
+    SocketManager& sm = SocketManager::getInstance();
+    WindowManager& wm = WindowManager::getInstance();
 
+    if (!sm.isConnectedToServer()) return;
+
+    QJsonObject js;
+    js["type"] = DELETE_ACCOUNT;
+    js["logon_user_id"] = wm.user_id;
+    sm.sendJSON(js);
 }
 
 void InfoUserWindow::onSocketConnected()
@@ -158,16 +162,16 @@ void InfoUserWindow::onJsonArrived()
 {
     Logger& logger = Logger::getInstance();
     SocketManager& sm = SocketManager::getInstance();
-    std::optional<QJsonObject> js = sm.popJSON(3);
+    std::optional<QJsonObject> js = sm.popJSON(INFOUSER_WINDOW);
     if (js.has_value()) handleJSON(js.value());
 }
 
 void InfoUserWindow::handleJSON(QJsonObject const& js)
 {
     Logger& logger = Logger::getInstance();
-    QString type = js["type"].toString();
+    int const type = js["type"].toInt();
 
-    if (type == "error")
+    if (type == ERROR_TYPE)
     {
         std::string const msg = std::string("Server error occured: ") +
             js["info"].toString().toStdString();;
@@ -175,8 +179,9 @@ void InfoUserWindow::handleJSON(QJsonObject const& js)
         return;
     }
     QJsonObject response = js["response"].toObject();
-    if (type == "changeUsernameResponse") changeUsernameHandler(response);
-    else if (type == "changePasswordResponse") changePasswordHandler(response);
+    if (type == CHANGE_USERNAME) changeUsernameHandler(response);
+    else if (type == CHANGE_PASSWORD) changePasswordHandler(response);
+    else if (type == DELETE_ACCOUNT) deleteAccountHandler(response);
 }
 
 void InfoUserWindow::changeUsernameHandler(QJsonObject const& js)
@@ -194,12 +199,16 @@ void InfoUserWindow::changePasswordHandler(QJsonObject const& js)
 {
     WindowManager& wm = WindowManager::getInstance();
     bool const success = (js["success"] == 1);
-    if (success)
-    {
-        QMessageBox::information(this, "Success!", "Ваш пароль успешно изменен!");
-        ui->newPwordLineEdit->setText("");
-        ui->confirmNewPwordLineEdit->setText("");
-        return;
-    }
-    QMessageBox::warning(this, "Failure!", "Пароль не был изменен!");
+    if (!success) return;
+    ui->newPwordLineEdit->setText("");
+    ui->confirmNewPwordLineEdit->setText("");
+}
+
+void InfoUserWindow::deleteAccountHandler(QJsonObject const& js)
+{
+    WindowManager& wm = WindowManager::getInstance();
+    bool const success = (js["success"] == 1);
+    if (!success) return;
+    wm.hideAllWindows();
+    wm.showWindow("MainWindow");
 }

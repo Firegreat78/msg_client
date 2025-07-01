@@ -31,6 +31,7 @@ DEALINGS IN THE SOFTWARE.
 #include "socketmanager.h"
 #include "logger.h"
 #include "messageinfo.h"
+#include "JsonTypes.h"
 
 
 #include <QTimer>
@@ -60,14 +61,13 @@ BaseWindow::BaseWindow(QWidget *parent)
     connect(ui->updateChatsButton, &QPushButton::clicked, this, &BaseWindow::updateChatsButtonClicked);
     connect(ui->chatsListWidget, &QListWidget::itemDoubleClicked, this, &BaseWindow::chatListDoubleClicked);
 
-    connect(heartbeatTimer, &QTimer::timeout, this, &BaseWindow::sendHeartBeat);
     connect(updateVisibleDataTimer, &QTimer::timeout, this, &BaseWindow::updateVisibleData);
 
 
     connect(&sm, &SocketManager::arrivedJSBaseWin, this, &BaseWindow::onJsonArrived);
 
     chat = new ChatWidget(this);
-    chat->setGeometry(QRect(291, 100, 1210, 520));
+    chat->setGeometry(QRect(291, 100, 1546, 695));
     ui->setFilterButton->setEnabled(false);
 
     connect(ui->setFilterButton, &QPushButton::clicked, this, &BaseWindow::setFilterButtonClicked);
@@ -78,6 +78,7 @@ BaseWindow::~BaseWindow()
     delete ui;
 }
 
+// The code that would execute after we show this window via singleton WindowManager
 void BaseWindow::customShow()
 {
     SocketManager& sm = SocketManager::getInstance();
@@ -101,20 +102,24 @@ void BaseWindow::customShow()
     ui->connectionStatusAction->setText("Статус подключения: Соединение с сервером присутствует");
 
     QJsonObject js;
-    js["type"] = "updateChatList";
+    js["type"] = UPDATE_CHAT_LIST;
     js["id"] = wm.user_id;
     sm.sendJSON(js);
 }
 
+// The code that would execute after we hide this window via singleton WindowManager
 void BaseWindow::customHide()
 {
     isActive = false;
+
     ui->setFilterButton->setEnabled(false);
     WindowManager::getInstance().chat_id = 0;
     WindowManager::getInstance().user_id_2 = 0;
+    chat->resetPendingAnswerMsg();
+    chat->resetPendingEditMsg();
 }
 
-// ShowEvent
+// The trick needed for customShow to work as intended
 void BaseWindow::showEvent(QShowEvent* e)
 {
     QMainWindow::showEvent(e);
@@ -188,7 +193,7 @@ void BaseWindow::onJsonArrived()
 
     Logger& logger = Logger::getInstance();
     SocketManager& sm = SocketManager::getInstance();
-    std::optional<QJsonObject> js = sm.popJSON(2);
+    std::optional<QJsonObject> js = sm.popJSON(BASE_WINDOW);
     if (js.has_value())
     {
         logger.logJSON("Handling JSON: ", js.value());
@@ -217,7 +222,7 @@ void BaseWindow::exitAccountActionClicked()
     if (!SocketManager::isConnectedToServer()) return;
 
     QJsonObject js;
-    js["type"] = "exitAccount";
+    js["type"] = EXIT_ACCOUNT;
     js["id"] = userID;
     SocketManager::getInstance().sendJSON(js);
 }
@@ -234,7 +239,7 @@ void BaseWindow::sendMessageButtonClicked()
     if (chat->getMsgPendingEdit() != 0)
     {
         QJsonObject js;
-        js["type"] = "updateMessage";
+        js["type"] = UPDATE_MESSAGE;
         js["msg_id"] = chat->getMsgPendingEdit();
         js["new_content"] = msg;
         sm.sendJSON(js);
@@ -244,7 +249,7 @@ void BaseWindow::sendMessageButtonClicked()
         return;
     }
     QJsonObject js;
-    js["type"] = "sendMessage";
+    js["type"] = SEND_MESSAGE;
     js["chat_id"] = wm.chat_id; // may be 0
     js["content"] = msg;
     js["sender_id"] = wm.user_id;
@@ -275,19 +280,16 @@ void BaseWindow::updateChatsButtonClicked()
 
     // Update list on the left
     QJsonObject js;
-    js["type"] = "updateChatList";
+    js["type"] = UPDATE_CHAT_LIST;
     js["id"] = wm.user_id;
     sm.sendJSON(js);
 }
 
-void BaseWindow::sendHeartBeat()
-{
-
-}
-
 void BaseWindow::chatListDoubleClicked(QListWidgetItem* item)
 {
-    if (!SocketManager::isConnectedToServer()) return;
+    bool const is_chat_deleted = item->data(Qt::UserRole + 1).toBool();
+    if (!SocketManager::isConnectedToServer() || is_chat_deleted) return;
+
     isLoadingMsgs = true;
     ui->setFilterButton->setEnabled(true);
     resetFilter();
@@ -298,17 +300,13 @@ void BaseWindow::chatListDoubleClicked(QListWidgetItem* item)
     QJsonObject js;
     isPrivateChat = true;
     js["is_private_chat"] = isPrivateChat;
-    js["type"] = "loadChat";
+    js["type"] = LOAD_CHAT;
     js["sender_id"] = wm.user_id;
     js["msg_amount"] = MAX_CHAT_MESSAGES;
     if (isPrivateChat)
     {
         wm.user_id_2 = item->data(Qt::UserRole).toLongLong();
         js["recv_id"] = wm.user_id_2;
-    }
-    else
-    {
-        // TODO: js["chat_id"] =
     }
     SocketManager::getInstance().sendJSON(js);
 }
@@ -326,7 +324,7 @@ void BaseWindow::setFilterButtonClicked()
     isLoadingMsgs = true;
     ui->sendMessageButton->setText("Отправить");
     QJsonObject js;
-    js["type"] = "loadChatFilter";
+    js["type"] = LOAD_CHAT_FILTER;
     js["is_private_chat"] = isPrivateChat;
     js["sender_id"] = wm.user_id;
     js["msg_amount"] = MAX_CHAT_MESSAGES;
@@ -362,9 +360,10 @@ void BaseWindow::updateVisibleData()
     SocketManager& sm = SocketManager::getInstance();
 
     QJsonObject jsOnlineStatus;
-    jsOnlineStatus["type"] = "changeOnlineStatus";
+    jsOnlineStatus["type"] = CHANGE_ONLINE_STATUS;
     jsOnlineStatus["id"] = wm.user_id;
-    jsOnlineStatus["is_online"] = this->isActiveWindow();
+    jsOnlineStatus["is_online"] = this->isActiveWindow() ||
+                                  wm.getWindow("InfoUserWindow")->isActiveWindow();
     sm.sendJSON(jsOnlineStatus);
 
     // If chat info changes and we want to update it on the lhs of the screen
@@ -379,12 +378,11 @@ void BaseWindow::updateVisibleData()
     if (ui->chatsListWidget->count() > 0)
     {
         QJsonObject js;
-        js["type"] = "updateUsersList";
+        js["type"] = UPDATE_USERS_LIST;
         js["users_ids"] = users_ids;
         js["logon_user_id"] = wm.user_id;
         sm.sendJSON(js);
     }
-
 
     // for unititialized private chat:
     // don't request new msgs
@@ -393,17 +391,15 @@ void BaseWindow::updateVisibleData()
 
     {
         QJsonObject js;
-        js["type"] = "updateFrontendMsgs";
+        js["type"] = UPDATE_FRONTEND_MESSAGES;
         js["chat_id"] = wm.chat_id;
         js["logon_user_id"] = wm.user_id;
         QJsonArray frontend_messages;
-        std::vector<int64_t> message_ids = chat->getCurrentMessagesID();
+        std::vector<int64_t> message_ids = chat->getVisibleMessagesID();
         for (auto const& id : message_ids)
-        {
-            if (chat->isMsgVisible(id))
-                frontend_messages.append(id);
-        }
+            frontend_messages.append(id);
         js["messages"] = frontend_messages;
+
         if (chat->getMsgPendingAnswer() != 0)
             js["pending_msg_id"] = chat->getMsgPendingAnswer();
         else if (chat->getMsgPendingEdit() != 0)
@@ -415,7 +411,7 @@ void BaseWindow::updateVisibleData()
     if (chat->messageAmount() > 0)
     {
         QJsonObject js;
-        js["type"] = "countUnread";
+        js["type"] = COUNT_UNREAD;
         js["chat_id"] = wm.chat_id;
         js["logon_user_id"] = wm.user_id;
         js["chat_top_msg"] = chat->firstMessageID();
@@ -433,7 +429,7 @@ void BaseWindow::updateVisibleData()
     if (chat->messageAmount() < MAX_CHAT_MESSAGES)
     {
         QJsonObject js;
-        js["type"] = "requestArrivedMessages";
+        js["type"] = REQUEST_ARRIVED_MESSAGES;
         js["chat_id"] = wm.chat_id;
         js["filter_content"] = filterContent;
         js["filter_dt_enabled"] = isFilterDtEnabled;
@@ -452,7 +448,7 @@ void BaseWindow::updateVisibleData()
     {
         int64_t upperMsg = chat->firstMessageID();
         QJsonObject js;
-        js["type"] = "requestUpperMsgs";
+        js["type"] = REQUEST_UPPER_MESSAGES;
         js["chat_id"] = wm.chat_id;
         js["upper_msg_id"] = upperMsg;
         js["max_msg_amount"] = MAX_CHAT_MESSAGES/2;
@@ -471,7 +467,7 @@ void BaseWindow::updateVisibleData()
     {
         int64_t lowerMsg = chat->lastMessageID();
         QJsonObject js;
-        js["type"] = "requestLowerMsgs";
+        js["type"] = REQUEST_LOWER_MESSAGES;
         js["chat_id"] = wm.chat_id;
         js["lower_msg_id"] = lowerMsg;
         js["max_msg_amount"] = MAX_CHAT_MESSAGES/2;
@@ -526,7 +522,7 @@ void BaseWindow::onCancelEdit()
 void BaseWindow::onDeleteMsg(int64_t id)
 {
     QJsonObject js;
-    js["type"] = "deleteMessage";
+    js["type"] = DELETE_MESSAGE;
     js["id"] = id;
     SocketManager::getInstance().sendJSON(js);
 }
@@ -543,7 +539,7 @@ void BaseWindow::gotoMsg(int64_t id)
     pendingGotoMsg = true;
     WindowManager& wm = WindowManager::getInstance();
     QJsonObject js;
-    js["type"] = "gotoMsg";
+    js["type"] = GOTO_MSG;
     js["id"] = id;
     js["max_chat_msgs"] = MAX_CHAT_MESSAGES;
     js["chat_id"] = wm.chat_id;
@@ -554,9 +550,9 @@ void BaseWindow::gotoMsg(int64_t id)
 void BaseWindow::handleJSON(QJsonObject const& js)
 {
     Logger& logger = Logger::getInstance();
-    QString type = js["type"].toString();
+    int const type = js["type"].toInt();
 
-    if (type == "error")
+    if (type == ERROR_TYPE)
     {
         std::string const msg = std::string("Server error occurred: ") +
             js["info"].toString().toStdString();
@@ -564,17 +560,17 @@ void BaseWindow::handleJSON(QJsonObject const& js)
         return;
     }
     QJsonObject response = js["response"].toObject();
-    if (type == "updateChatListResponse") chatListResponseHandler(response);
-    else if (type == "updateUsersListResponse") updateUsersListResponseHandler(response);
-    else if (type == "loadChatResponse") loadChatResponseHandler(response);
-    else if (type == "loadChatFilterResponse") loadChatFilterHandler(response);
-    else if (type == "sendMessageResponse") sendMessageResponseHandler(response);
-    else if (type == "requestArrivedMessagesResponse") getNewChatMsgResponse(response);
-    else if (type == "updateFrontendMsgsResponse") updateFrontendMsgsHandler(response);
-    else if (type == "requestLowerMsgsResponse") requestLowerMsgsResponse(response);
-    else if (type == "requestUpperMsgsResponse") requestUpperMsgsResponse(response);
-    else if (type == "gotoMsgResponse") gotoMsgHandler(response);
-    else if (type == "countUnreadResponse") countUnreadMsgsHandler(response);
+    if (type == UPDATE_CHAT_LIST) chatListResponseHandler(response);
+    else if (type == UPDATE_USERS_LIST) updateUsersListResponseHandler(response);
+    else if (type == LOAD_CHAT) loadChatResponseHandler(response);
+    else if (type == LOAD_CHAT_FILTER) loadChatFilterHandler(response);
+    else if (type == SEND_MESSAGE) sendMessageResponseHandler(response);
+    else if (type == REQUEST_ARRIVED_MESSAGES) getNewChatMsgResponse(response);
+    else if (type == UPDATE_FRONTEND_MESSAGES) updateFrontendMsgsHandler(response);
+    else if (type == REQUEST_LOWER_MESSAGES) requestLowerMsgsResponse(response);
+    else if (type == REQUEST_UPPER_MESSAGES) requestUpperMsgsResponse(response);
+    else if (type == GOTO_MSG) gotoMsgHandler(response);
+    else if (type == COUNT_UNREAD) countUnreadMsgsHandler(response);
 }
 
 // Initial loading
@@ -585,8 +581,7 @@ void BaseWindow::chatListResponseHandler(QJsonObject const& response)
     if (!success) return;
 
     QJsonArray const usernames = response["usernames"].toArray();
-    QJsonArray const ids = response["user_ids"].toArray(); // recv user ids (may be 0)
-    QJsonArray const chat_ids = response["chat_ids"].toArray();
+    QJsonArray const ids = response["user_ids"].toArray(); // recv user ids
     QJsonArray const last_msg_contents = response["last_msg_contents"].toArray();
     QJsonArray const last_msg_ts = response["last_msg_ts"].toArray();
     QJsonArray const last_msg_username = response["last_msg_username"].toArray();
@@ -598,8 +593,6 @@ void BaseWindow::chatListResponseHandler(QJsonObject const& response)
     {
         QString const name = usernames[i].toString(); // @username or group chat name
         qint64 const user_id = ids[i].toInteger();
-        qint64 const chat_id =
-            chat_ids[i].isNull() ? 0 : chat_ids[i].toInteger();
         bool const is_cont_null = last_msg_contents[i].isNull();
         QString const msg_cont =
             is_cont_null ? "" : last_msg_contents[i].toString();
@@ -630,8 +623,7 @@ void BaseWindow::chatListResponseHandler(QJsonObject const& response)
         QListWidgetItem* item = new QListWidgetItem(itemText);
 
         item->setData(Qt::UserRole, user_id); // user ID/group chat ID
-        item->setData(Qt::UserRole+1, name); // username with '@'
-        item->setData(Qt::UserRole+2, chat_id);
+        item->setData(Qt::UserRole+1, false); // is_profile_deleted
 
         ui->chatsListWidget->addItem(item);
     }
@@ -723,6 +715,9 @@ void BaseWindow::getNewChatMsgResponse(QJsonObject const& response)
 void BaseWindow::requestLowerMsgsResponse(QJsonObject const& response)
 {
     bool success = (response["success"] == 1);
+
+    // We need to return from func while we about to go to some message
+    // because
     if (!success || pendingGotoMsg || isLoadingMsgs) return;
 
     QJsonArray messages = response["messages"].toArray();
@@ -734,7 +729,7 @@ void BaseWindow::requestLowerMsgsResponse(QJsonObject const& response)
         MessageInfo const info = MessageInfo::fromJS(message);
         chat->addMessage(info, true);
     }
-    if (!messages.empty()) chat->scroll(50, 0.35);
+    if (!messages.empty()) chat->scroll(50, 0.7);
 }
 
 void BaseWindow::requestUpperMsgsResponse(QJsonObject const& response)
@@ -751,7 +746,7 @@ void BaseWindow::requestUpperMsgsResponse(QJsonObject const& response)
         MessageInfo const info = MessageInfo::fromJS(message);
         chat->addMessage(info, false);
     }
-    if (!messages.empty()) chat->scroll(50, 0.65);
+    if (!messages.empty()) chat->scroll(50, 0.3);
 }
 
 void BaseWindow::updateFrontendMsgsHandler(QJsonObject const& response)
@@ -815,6 +810,7 @@ void BaseWindow::updateUsersListResponseHandler(QJsonObject const& response)
     if (!success) return;
 
     QJsonArray const usernames = response["usernames"].toArray();
+    QJsonArray const deleted_statuses = response["deleted_statuses"].toArray();
     QJsonArray const last_msg_contents = response["last_msg_contents"].toArray();
     QJsonArray const last_msg_ts = response["last_msg_ts"].toArray();
     QJsonArray const last_msg_username = response["last_msg_username"].toArray();
@@ -825,9 +821,24 @@ void BaseWindow::updateUsersListResponseHandler(QJsonObject const& response)
     for (int i = 0; i < ui->chatsListWidget->count(); i++)
     {
         QListWidgetItem* item = ui->chatsListWidget->item(i);
-        if (item == nullptr) continue;
 
-        QString const name = usernames[i].toString(); // @username or group chat name
+        if (item == nullptr) continue;
+        if (item->data(Qt::UserRole + 1).toBool()) continue;
+
+        QString const name = usernames[i].toString();
+        bool const is_user_deleted = deleted_statuses[i].toBool(false);
+
+        if (is_user_deleted)
+        {
+            item->setData(Qt::UserRole + 1, true);
+            QString itemText = QString(
+                "%1"
+                "\nПользователь удалил свою учётную запись"
+                ).arg(name);
+            item->setText(itemText);
+            continue;
+        }
+
         bool const is_cont_null = last_msg_contents[i].isNull();
         QString const msg_cont =
             is_cont_null ? "" : last_msg_contents[i].toString();
@@ -838,7 +849,7 @@ void BaseWindow::updateUsersListResponseHandler(QJsonObject const& response)
 
         bool const is_online = online_statuses[i].toBool();
         QString last_seen_online = last_seen_onlines[i].toString();
-        int64_t const unread_cnt = unread_msgs_cnt[i].toInteger();
+        int64_t const unread_cnt = unread_msgs_cnt[i].toInteger(0);
         QString itemText = QString("%1"
                                    "%2"
                                    "%3"
@@ -847,14 +858,15 @@ void BaseWindow::updateUsersListResponseHandler(QJsonObject const& response)
                                    "%6"
                                    "%7")
                                .arg(
-                                   name,
-                                   is_online ? "\nВ сети" : QString("\nБыл в сети %1").arg(WindowManager::convertToLocalTimeString(last_seen_online)),
-                                   is_cont_null ? "" : "\n\nПоследнее сообщение",
-                                   is_cont_null ? "" : "\n" + msg_username,
-                                   is_cont_null ? "" : "\n" + WindowManager::convertToLocalTimeString(msg_ts),
-                                   is_cont_null ? "" : "\n" + (msg_cont.length() >= 15 ? msg_cont.first(15)+"..." : msg_cont),
-                                   unread_cnt == 0 ? "" : "\n\nНепрочитанных сообщений: " + QString::number(unread_cnt)
-                                   );
+                                name,
+                                is_online ? "\nВ сети" :
+                                    QString("\nБыл в сети %1").arg(WindowManager::convertToLocalTimeString(last_seen_online)),
+                                is_cont_null ? "" : "\n\nПоследнее сообщение",
+                                is_cont_null ? "" : "\n" + msg_username,
+                                is_cont_null ? "" : "\n" + WindowManager::convertToLocalTimeString(msg_ts),
+                                is_cont_null ? "" : "\n" + (msg_cont.length() >= 15 ? msg_cont.first(15)+"..." : msg_cont),
+                                unread_cnt == 0 ? "" : "\n\nНепрочитанных сообщений: " + QString::number(unread_cnt)
+        );
 
         item->setText(itemText);
     }

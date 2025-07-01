@@ -34,7 +34,6 @@ DEALINGS IN THE SOFTWARE.
 #include <QApplication>
 #include <QLocale>
 #include <QTranslator>
-#include <QtNetwork>
 
 int main(int argc, char *argv[])
 {
@@ -42,7 +41,7 @@ int main(int argc, char *argv[])
     Logger& logger = Logger::getInstance();
     logger.log("The logger has been successfully initialized.");
 
-    QTranslator translator;
+    /*QTranslator translator;
     const QStringList uiLanguages = QLocale::system().uiLanguages();
     for (const QString &locale : uiLanguages) {
         const QString baseName = "test1_" + QLocale(locale).name();
@@ -50,7 +49,7 @@ int main(int argc, char *argv[])
             a.installTranslator(&translator);
             break;
         }
-    }
+    }*/
     WindowManager& win_manager = WindowManager::getInstance();
     MainWindow* main_win = new MainWindow();
     BaseWindow* base_win = new BaseWindow();
@@ -58,7 +57,6 @@ int main(int argc, char *argv[])
     win_manager.registerWindow("MainWindow", main_win);
     win_manager.registerWindow("BaseWindow", base_win);
     win_manager.registerWindow("InfoUserWindow", infouserwin);
-
     win_manager.showWindow("MainWindow");
     return a.exec();
 }

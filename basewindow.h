@@ -23,6 +23,7 @@ FOR ANY DAMAGES OR OTHER LIABILITY, WHETHER IN CONTRACT, TORT OR OTHERWISE,
 ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 */
+
 #ifndef BASEWINDOW_H
 #define BASEWINDOW_H
 
@@ -98,7 +99,6 @@ private slots:
     void sendMessageButtonClicked();
     void updateChatsButtonClicked();
 
-    void sendHeartBeat();
     void onSocketConnected();
     void onSocketDisconnected();
     void onSocketError(QAbstractSocket::SocketError);
